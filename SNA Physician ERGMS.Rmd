@@ -1,0 +1,316 @@
+---
+title: "SNA Physician ERGM"
+author: "Sarah Piombo"
+date: "2/21/2020"
+output:
+  html_document: default
+  pdf_document: default
+  editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(haven)
+library(igraph)
+library(magrittr)
+library(tidyverse)
+library(ergm)
+library(intergraph)
+
+#Load in data sets
+#Attribute data
+att_data
+att_data <-   att_data$rolelab2 <- as.factor(att_data$rolelab)
+#Advice graph dyads
+advice_dyad 
+#Advice net data frame
+advice_data
+#Discussion net attribute data
+att_data_dis 
+att_data_dis <- att_data_dis$rolelab2 <- as.factor(att_data_dis$rolelab)
+#Discussion graph dyads
+discuss_dyad 
+#Discussion net data frame
+discuss_data 
+#Full Advice net dyads
+advice_all
+
+
+############## Advice Network ############################
+# Remove from network those not in the attribute data
+# Do not remove for opinion leader identification
+#Use Dyad and Attribute data to construct network
+advice_graph <-graph_from_data_frame(advice_dyad, vertices = att_data)
+
+############## Full Advice Network #######################
+advice_graph_all <-graph_from_data_frame(advice_all)
+V(advice_graph_all)$indegree   <- degree(advice_graph_all, mode = "in")
+V(advice_graph_all)$outdegree  <- degree(advice_graph_all, mode = "out")
+#Return full advice network to data frame, look at highest indegree to find opinion leaders
+data_advice_all <-  as_data_frame(advice_graph_all, what = "vertices")
+
+#################### Discussion Network ###################
+#Use discussion dyad and attribute data to construct network
+discuss_graph <-graph_from_data_frame(discuss_dyad, vertices = att_data_dis)
+
+```
+
+
+Creating Network object
+```{r ERGMS, include = FALSE}
+library(texreg)
+
+advice_net <-  intergraph::asNetwork(advice_graph)
+discussion_net  <-  intergraph::asNetwork(discuss_graph)
+
+summary(advice_net ~ edges + mutual)
+summary(discussion_net ~ edges + mutual)
+
+#Check for loops in both networks
+E(advice_graph)[which_loop(advice_graph)]
+E(discuss_graph)[which_loop(discuss_graph)]
+
+
+#Running simple ergm with just edge count on advice network
+model0 <- ergm(advice_net ~ edges)
+summary(model0)
+
+#Add more effects to model - adding reciprocity and gwesp effects
+model1 <-  ergm(advice_net ~ edges + 
+                  mutual +
+                  gwesp(0.1, fixed = T),
+                constraints = ~bd(maxout = 7)) 
+summary(model1)
+
+#Add nodefactor and nodematching effects for occupational role and awareness of clinic
+advicemod <-  ergm(advice_net ~ edges + 
+                  nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwesp(0.1, fixed = T),
+                constraints = ~bd(maxout = 7)) 
+summary(advicemod)
+
+#Run the same model on the discussion network
+discussionmod <-  ergm(discussion_net ~ edges + 
+                 nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwesp(0.1, fixed = T),
+                constraints = ~bd(maxout = 7)) 
+summary(discussionmod)
+
+#Output 
+screenreg(list( model0, model1, advicemod, discussionmod))
+```
+
+Model Fit
+Model 3 is the Advice model and Model 4 is the Discussion Model
+Included the diagnostics and goodness of fit for the two models
+```{r Model fit}
+screenreg(list(advicemod, discussionmod))
+
+#mcmc.diagnostics(advicemod)
+adgof = gof(advicemod, GOF = ~model)
+adgof
+advice_gof <- gof(advicemod)
+plot(advice_gof)
+
+#mcmc.diagnostics(discussionmod)
+disgof = gof(discussionmod, GOF = ~model)
+disgof
+discussion_gof <- gof(discussionmod)
+plot(discussion_gof)
+
+```
+
+Logistic Regression for factors associated with surivorship clinic referral
+```{r Logistic Regression}
+att_data <- merge(advice_data, discuss_data, by= c("name"), all.x = T, all.y = T)
+
+#Advice Network
+model_ad1 <- advice_data %>% 
+  glm(liferefer ~ refer_expo + betweeness + relevel(rolelab2, ref = 3), data = ., family =binomial())
+summary(model_ad1)
+
+model_ad2 <- advice_data %>% 
+  glm(lifeaware ~ refer_expo + betweeness + rolelable, data = ., family =binomial())
+  summary(model_ad2)
+
+#Discussion Network Models - betweenness is sig.
+model_dis1 <- discuss_data %>% 
+  glm(liferefer ~ refer_expo +  betweeness + relevel(rolelable, ref = "Nurse")  , data = ., family =binomial())
+summary(model_dis1)
+
+model_dis2 <- discuss_data %>% 
+  glm(lifeaware ~  refer_expo, data = ., family =binomial())
+  summary(model_dis2)
+```
+
+Network graphs: regular ones and the ones sized by degree
+```{r Graphing the  Networks}
+advice_network <- cbind(
+  size    = vcount(advice_graph),
+  nedges  = ecount(advice_graph),
+  density = edge_density(advice_graph),
+  recip   = reciprocity(advice_graph),
+  centr   = centr_betw(advice_graph)$centralization,
+  pathLen = mean_distance(advice_graph)
+  )
+
+#Advice network filtered for people with attribute data
+col_role <- c("lightsteelblue", "tomato", "palegreen3", "orange2", "palegoldenrod")
+V(advice_graph)$color <- col_role[V(advice_graph)$rolelab]
+
+shape2 <-   c("circle", "square")
+V(advice_graph)$shape <- shape2[V(advice_graph)$liferefer+1]
+
+#Checking betweeness cutoff for labels
+betlab <- betweenness(advice_graph)
+betlab <- ifelse(betlab>150, V(advice_graph)$name, NA)
+
+#Plotting the advice network
+plot(
+  advice_graph,
+  vertex.size     = degree(advice_graph)/2 +2 ,
+  vertex.label    = V(advice_graph)$betlab,
+  vertex.label.cex = 0.7,
+  vertex.label.color = c("gray44"),
+  vertex.label.family="Helvetica",
+  vertex.label.dist=0.2,
+  layout= layout_with_fr,
+  edge.arrow.size = .25,
+  vertex.color = V(advice_graph)$color,
+  vertex.shape = V(advice_graph)$shape)
+  title(main = "Advice Network with Indegree" )
+  legend("bottomleft", legend =c("Physician", "NP/PA", "Clinic Nurse", "Social Worker", "Scheduler/other"), pch=21,
+  col="#777777", pt.bg=col_role, pt.cex=1, cex=1, bty="n", ncol=1)
+
+dev.off()
+
+#Advice network with everyone (includes people who were nominated but did not participate)
+plot(
+  advice_graph_all,
+  vertex.size     = degree(advice_graph_all)/2 +2 ,
+  layout = layout_with_kk,
+  vertex.label    = NA,
+  edge.arrow.size = .25,
+  vertex.color = "tomato"
+  )
+  title(main = "Advice Network with Everyone" )
+dev.off()
+
+
+#Discssion Network
+discussion_network <- cbind(
+  size    = vcount(discuss_graph),
+  nedges  = ecount(discuss_graph),
+  density = edge_density(discuss_graph),
+  recip   = reciprocity(discuss_graph),
+  centr   = centr_betw(discuss_graph)$centralization,
+  pathLen = mean_distance(discuss_graph)
+  ) %>% 
+  print()
+
+#Shape and color for the discussion network
+shape2 <-   c("circle", "square")
+V(discuss_graph)$shape <- shape2[V(discuss_graph)$liferefer+1]
+
+col_role2 <- c("lightsteelblue", "tomato", "palegreen3", "orange2",  "palegoldenrod")
+V(discuss_graph)$color <- col_role2[V(discuss_graph)$rolelab]
+
+#Plotting discussion network
+plot(
+  discuss_graph, 
+  vertex.size     = degree(discuss_graph)/2 +2 ,
+  vertex.label    = NA,
+  layout = layout_nicely,
+  edge.arrow.size = .25,
+  vertex.color = V(discuss_graph)$color,
+  vertex.shape = V(discuss_graph)$shape
+  )
+title(main = "Discussion Network with Indegree")
+legend("bottomleft", legend =c("Physician", "NP/PA", "Nurse", "Social Worker", "Scheduler/other"), pch=21,
+  col="#777777", pt.bg=col_role2, pt.cex=1, cex=1, bty="n", ncol=1)
+dev.off()
+
+#Plotting discussion network with all nodes the same size
+plot(
+  discuss_graph,
+  vertex.size     = 5,
+  vertex.label    = NA,
+  layout = layout_with_kk,
+  edge.arrow.size = .25,
+  vertex.color = col_role2
+  ) 
+title(main = "Discussion Network") 
+legend("bottomleft", legend =c("Physician", "NP/PA", "Nurse", "Social Worker", "Scheduler/other"), pch=21,
+  col="#777777", pt.bg=col_role2, pt.cex=1, cex=.9, bty="n", ncol=1)
+dev.off()
+
+#LABELING NODES WITH ONLY HIGH BETWEENNESS CENTRALITY
+betlab <- betweenness(advice_graph)
+betlab <- ifelse(betlab>150, V(advice_graph)$name, NA)
+V(advice_graph)$betlab <- betlab
+
+betlab2 <- betweenness(discuss_graph)
+betlab2 <- ifelse(betlab2>250, V(discuss_graph)$name, NA)
+
+#RESCALING LAYOUT
+l <- layout_nicely(advice_graph)
+l <- norm_coords(l, ymin=-1, ymax=1, xmin=-1, xmax=1)
+  rescale = F, layout=l*0.8
+  
+#CREATING LABELS FOR HIGH BETWEENNESS INDIVIDUALS
+bet <- ifelse(betweenness(advice_graph) > 200, 1, ifelse(betweenness(advice_graph)>170, 2,
+       ifelse(betweenness(advice_graph)>160, 3, NA)))
+bet2 <- ifelse(betweenness(discuss_graph) > 370, 4, ifelse(betweenness(discuss_graph)>363, 5,
+        ifelse(betweenness(discuss_graph)>360, 1, NA)))
+
+#Two panel plot of advice and discussion networks
+par(mfrow=c(1,2))
+plot(
+  advice_graph,
+  vertex.size = (degree(advice_graph)/2 +5),
+  vertex.label = bet, 
+  vertex.label.cex = 1,
+  vertex.label.color = c("black"),
+  vertex.label.family="Helvetica",
+  vertex.label.font =2,
+  #vertex.label.dist=1,
+  layout = layout_nicely,
+  edge.arrow.size = .25,
+  vertex.color = V(advice_graph)$color,
+  vertex.shape = V(advice_graph)$shape)
+  title(main = "Advice Network" )
+  legend("bottomleft", legend =c("Physician", "Nurse Practioner/Physician Assistant", "Clinic Nurse", "Social Worker", "Scheduler/other"), pch=21,
+  col="#777777", pt.bg=col_role, pt.cex=1, cex=1.2, bty="n", ncol=1)
+  
+  plot(
+  discuss_graph, 
+  vertex.size     = (degree(discuss_graph)/2 +5),
+  #vertex.label    = V(discuss_graph)$id,
+  vertex.label = bet2, 
+  vertex.label.cex = 1,
+  vertex.label.color = c("black"),
+  vertex.label.family="Helvetica",
+  vertex.label.font =2,
+  #vertex.label.dist=1,
+  layout = layout_nicely,
+  edge.arrow.size = .25,
+  vertex.color = V(discuss_graph)$color,
+  vertex.shape = V(discuss_graph)$shape
+  )
+title(main = "Discussion Network")
+dev.off()
+```

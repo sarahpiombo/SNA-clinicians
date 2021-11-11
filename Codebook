@@ -1,0 +1,24 @@
+Codebook
+
+Attribute Data sets (att_data, att_data_dis N=69)
+rolelabel - occupational role at clinic
+rolelab - numeric coding of occupational role at clinic
+lifeaware - awareness of survivorship clinic (0= No, 1 = Yes)
+liferefer - referral of patients to the survivorship clinic (0 = No, 1 = Yes)
+norefs - number of referrals
+
+Network Data sets (advice_data, discuss_data)
+In addition to the attribute variables, contains the following:
+Indegree - number of nominations received
+Outdegree - number of nominations sent
+Betweenness - Measure of betweenness centrality
+refer_expo - network exposure to referrals: proportion of people in personal network who have made clinic referrals
+
+Dyads (advice_dyad, discuss_dyad, advice_data_all)
+Edgelist/dyads for each network
+id - participant
+alterid - nomination
+
+Notes:
+Use Dyads and attribute data to construct networks and run ergms
+Network data sets (advice_data and discuss_data) contain node level covariates to be used in logistic regressions to predict survivorship clinic referral
