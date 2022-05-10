@@ -140,6 +140,8 @@ advicemod_gwo <-  ergm(advice_net ~ edges +
                                        MCMC.interval = 2000*4)) 
 
 summary(advicemod_gwo)
+adv <- screenreg(list(advicemod_gwo))
+
 
 advicemod_gwo2 <-  ergm(advice_net ~ edges + 
                   nodefactor("rolelab", levels=-3) +
@@ -290,6 +292,10 @@ disgwogof
 disgwo_gof <- gof(discussmod_gwo)
 par(mfrow=c(2,2))
 plot(disgwo_gof)
+
+
+ergmans <- (list(advicemod_gwo, discussmod_gwo))
+htmlreg(ergmans, custom.model.names = c("Advice", "Discussion"), caption.above = TRUE, caption = "ERGMS", digits = 2, single.row = T, center =T, file = "/Users/sarahpiombo/Documents/R/Projects/SNA Physicians/output_data/ergm_final.html")
 ```
 
 Model Fit
@@ -340,7 +346,7 @@ summary(discuss_data$betweeness)
 discuss_data$bet100 <- discuss_data$betweeness*100 #betweenness needed to be multiplied
 summary(discuss_data$bet100)
 model_dis3 <- discuss_data%>% 
-  glm(liferefer ~   refer_expo + lifeaware + bet100 + relevel(rolelabel, ref = "Nurse")  , data = ., family =binomial(link=logit))
+  glm(liferefer ~   refer_expo + bet100 + relevel(rolelabel, ref = "Nurse")  , data = ., family =binomial(link=logit))
 summary(model_dis3)
 disnetmod_final <- model_dis3 %>% 
   tidy(.) %>% 
