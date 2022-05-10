@@ -1,11 +1,12 @@
 ---
 title: "SNA Physician ERGM"
 author: "Sarah Piombo"
-date: "2/21/2020"
+date: "5/10/2022"
 output:
   html_document: default
   pdf_document: default
   editor_options: 
+    chunk_output_type: console
   chunk_output_type: console
 ---
 
@@ -18,6 +19,7 @@ library(magrittr)
 library(tidyverse)
 library(ergm)
 library(intergraph)
+library(texreg)
 
 #Load in data sets
 #Attribute data
@@ -61,6 +63,7 @@ discuss_graph <-graph_from_data_frame(discuss_dyad, vertices = att_data_dis)
 Creating Network object
 ```{r ERGMS, include = FALSE}
 library(texreg)
+set.seed(111)
 
 advice_net <-  intergraph::asNetwork(advice_graph)
 discussion_net  <-  intergraph::asNetwork(discuss_graph)
@@ -111,7 +114,182 @@ discussionmod <-  ergm(discussion_net ~ edges +
 summary(discussionmod)
 
 #Output 
-screenreg(list( model0, model1, advicemod, discussionmod))
+#screenreg(list( model0, model1, advicemod, discussionmod))
+```
+
+Updated for revision #2 with gw*degree terms
+```{r gwdegree ergms advice net}
+#gwodegree
+advicemod_gwo <-  ergm(advice_net ~ edges + 
+                  nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwodegree(0.1, fixed=T) +
+                  gwesp(0.1, fixed=T),
+                constraints = ~bd(maxout = 7),
+                control = control.ergm(seed = 111,
+                                       MCMLE.maxit = 10,
+                                       parallel = 4,
+                                       CD.maxit = 10,
+                                       MCMC.samplesize = 2000*4,
+                                       MCMC.burnin = 25000,
+                                       MCMC.interval = 2000*4)) 
+
+summary(advicemod_gwo)
+
+advicemod_gwo2 <-  ergm(advice_net ~ edges + 
+                  nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwodegree(0.5, fixed=T) +
+                  gwesp(0.5, fixed=T),
+                constraints = ~bd(maxout = 7),
+                control = control.ergm(seed = 111,
+                                       MCMLE.maxit = 10,
+                                       parallel = 4,
+                                       CD.maxit = 10,
+                                       MCMC.samplesize = 2000*4,
+                                       MCMC.burnin = 25000,
+                                       MCMC.interval = 2000*4)) 
+
+summary(advicemod_gwo2)
+
+#gwidegree
+advicemod_gwi <-  ergm(advice_net ~ edges + 
+                  nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwidegree(0.1, fixed=T) +
+                  gwesp(0.1, fixed=T),
+                constraints = ~bd(maxout = 7),
+                control = control.ergm(seed = 111,
+                                       MCMLE.maxit = 10,
+                                       parallel = 4,
+                                       CD.maxit = 10,
+                                       MCMC.samplesize = 2000*4,
+                                       MCMC.burnin = 25000,
+                                       MCMC.interval = 2000*4)) 
+summary(advicemod_gwi)
+
+
+#didn't converge
+advicemod_gw <-  ergm(advice_net ~ edges + 
+                  nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwodegree(0.5, fixed=T)+
+                  gwidegree(0.5, fixed=T)+
+                  gwesp(0.1, fixed=T),
+                constraints = ~bd(maxout = 7),
+                control = control.ergm(seed = 111,
+                                       MCMLE.maxit = 10,
+                                       parallel = 4,
+                                       CD.maxit = 10
+                                       #MCMC.samplesize = 2000*4,
+                                       #MCMC.burnin = 25000,
+                                       #MCMC.interval = 2000*4
+                                       )) 
+summary(advicemod_gw)
+
+gws <- screenreg(list(advicemod_gwo, advicemod_gwi))
+gws
+write.table(gws, "adgw.txt")
+
+
+mcmc.diagnostics(advicemod_gwi)
+adgwi_gof <- gof(advicemod_gwi)
+plot(adgwi_gof)
+
+
+mcmc.diagnostics(advicemod_gwo)
+adgwgof = gof(advicemod_gwo, GOF = ~model)
+adgwgof
+adgw_gof <- gof(advicemod_gwo)
+plot(adgw_gof)
+
+library(coda)
+adsamplegwo <- advicemod_gwo$sample
+coda::gelman.diag(adsamplegwo)
+
+adsamplegwi <- advicemod_gwi$sample
+coda::gelman.diag(adsamplegwi)
+
+```
+
+Gw*degree terms for discussion network
+```{r gwdegree ergms discuss net}
+
+#GWodegree 
+discussmod_gwo <-  ergm(discussion_net ~ edges + 
+                  nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwodegree(0.1, fixed=T) +
+                  gwesp(0.1, fixed=T),
+                constraints = ~bd(maxout = 7),
+                control = control.ergm(seed = 111,
+                                       MCMLE.maxit = 10,
+                                       parallel = 4,
+                                       CD.maxit = 10,
+                                       MCMC.samplesize = 2000*4,
+                                       MCMC.burnin = 25000,
+                                       MCMC.interval = 2000*4))
+                 
+
+summary(discussmod_gwo)
+
+#Gwidegree
+discussmod_gwi <-  ergm(discussion_net ~ edges + 
+                  nodefactor("rolelab", levels=-3) +
+                  nodematch("rolelab") + 
+                  nodefactor("lifeaware") +
+                  nodefactor("liferefer") +
+                  nodematch("lifeaware") +
+                  nodematch("liferefer") +
+                  mutual +
+                  gwidegree(0.1, fixed=T) +
+                  gwesp(0.1, fixed=T),
+                constraints = ~bd(maxout = 7),
+                control = control.ergm(seed = 111,
+                                       MCMLE.maxit = 10,
+                                       parallel = 4,
+                                       CD.maxit = 10)) 
+summary(discussmod_gwi)
+
+dissgws <- screenreg(list(discussmod_gwo, discussmod_gwi))
+dissgws
+write.table(dissgws, "dissgw.txt")
+
+disssamplegwo <- discussmod_gwo$sample
+coda::gelman.diag(disssamplegwo)
+
+#MCMC Diagnostics
+mcmc.diagnostics(discussmod_gwo)
+disgwogof = gof(discussmod_gwo, GOF = ~model)
+disgwogof
+disgwo_gof <- gof(discussmod_gwo)
+par(mfrow=c(2,2))
+plot(disgwo_gof)
 ```
 
 Model Fit
@@ -137,24 +315,38 @@ plot(discussion_gof)
 Logistic Regression for factors associated with surivorship clinic referral
 ```{r Logistic Regression}
 att_data <- merge(advice_data, discuss_data, by= c("name"), all.x = T, all.y = T)
+discuss_data <- mutate(discuss_data, rolelabel = as.factor(rolelable))
 
 #Advice Network
 model_ad1 <- advice_data %>% 
-  glm(liferefer ~ refer_expo + betweeness + relevel(rolelab2, ref = 3), data = ., family =binomial())
+  glm(liferefer ~ refer_expo + betweeness + relevel(rolelab2, ref = 3), data = ., family =binomial(link = logit))
 summary(model_ad1)
 
 model_ad2 <- advice_data %>% 
-  glm(lifeaware ~ refer_expo + betweeness + rolelable, data = ., family =binomial())
+  glm(lifeaware ~ refer_expo + betweeness + rolelable, data = ., family =binomial(link=logit))
   summary(model_ad2)
 
 #Discussion Network Models - betweenness is sig.
 model_dis1 <- discuss_data %>% 
-  glm(liferefer ~ refer_expo +  betweeness + relevel(rolelable, ref = "Nurse")  , data = ., family =binomial())
+  glm(liferefer ~ refer_expo +  betweeness + relevel(rolelable, ref = "Nurse")  , data = ., family =binomial(link=logit))
 summary(model_dis1)
 
 model_dis2 <- discuss_data %>% 
   glm(lifeaware ~  refer_expo, data = ., family =binomial())
   summary(model_dis2)
+
+## Revised Model for Revision
+summary(discuss_data$betweeness)
+discuss_data$bet100 <- discuss_data$betweeness*100 #betweenness needed to be multiplied
+summary(discuss_data$bet100)
+model_dis3 <- discuss_data%>% 
+  glm(liferefer ~   refer_expo + lifeaware + bet100 + relevel(rolelabel, ref = "Nurse")  , data = ., family =binomial(link=logit))
+summary(model_dis3)
+disnetmod_final <- model_dis3 %>% 
+  tidy(.) %>% 
+  kable(., digits = c(0,3,3,3,3))
+disnetmod_final
+
 ```
 
 Network graphs: regular ones and the ones sized by degree
@@ -169,7 +361,7 @@ advice_network <- cbind(
   )
 
 #Advice network filtered for people with attribute data
-col_role <- c("lightsteelblue", "tomato", "palegreen3", "orange2", "palegoldenrod")
+col_role <- c("lightslateblue", "tomato", "palegreen3", "orange2", "palegoldenrod")
 V(advice_graph)$color <- col_role[V(advice_graph)$rolelab]
 
 shape2 <-   c("circle", "square")
@@ -226,7 +418,7 @@ discussion_network <- cbind(
 shape2 <-   c("circle", "square")
 V(discuss_graph)$shape <- shape2[V(discuss_graph)$liferefer+1]
 
-col_role2 <- c("lightsteelblue", "tomato", "palegreen3", "orange2",  "palegoldenrod")
+col_role2 <- c("lightslateblue", "tomato", "palegreen3", "orange2",  "palegoldenrod")
 V(discuss_graph)$color <- col_role2[V(discuss_graph)$rolelab]
 
 #Plotting discussion network
@@ -278,39 +470,49 @@ bet2 <- ifelse(betweenness(discuss_graph) > 370, 4, ifelse(betweenness(discuss_g
         ifelse(betweenness(discuss_graph)>360, 1, NA)))
 
 #Two panel plot of advice and discussion networks
+#This is the final figure for publication
+png(filename= "", 
+    width=12, height=9,
+    units="in", res=300, pointsize=11)
 par(mfrow=c(1,2))
 plot(
   advice_graph,
-  vertex.size = (degree(advice_graph)/2 +5),
+  vertex.size     = (degree(advice_graph)/2 +5),
   vertex.label = bet, 
   vertex.label.cex = 1,
   vertex.label.color = c("black"),
-  vertex.label.family="Helvetica",
+  vertex.label.family="Arial",
   vertex.label.font =2,
-  #vertex.label.dist=1,
   layout = layout_nicely,
   edge.arrow.size = .25,
+  edge.curved = (0.5),
   vertex.color = V(advice_graph)$color,
   vertex.shape = V(advice_graph)$shape)
   title(main = "Advice Network" )
-  legend("bottomleft", legend =c("Physician", "Nurse Practioner/Physician Assistant", "Clinic Nurse", "Social Worker", "Scheduler/other"), pch=21,
-  col="#777777", pt.bg=col_role, pt.cex=1, cex=1.2, bty="n", ncol=1)
+  legend("bottomleft", legend =c("Physician", "Nurse Practioner/Physician Assistant", "Clinic Nurse", "Social Worker", "Scheduler/other"), 
+  pch=21,
+  col="#777777", pt.bg=col_role, 
+  pt.cex=1, cex=1, 
+  bty="n", ncol=1)
   
   plot(
   discuss_graph, 
   vertex.size     = (degree(discuss_graph)/2 +5),
-  #vertex.label    = V(discuss_graph)$id,
   vertex.label = bet2, 
   vertex.label.cex = 1,
   vertex.label.color = c("black"),
-  vertex.label.family="Helvetica",
+  vertex.label.family="Arial",
   vertex.label.font =2,
   #vertex.label.dist=1,
   layout = layout_nicely,
   edge.arrow.size = .25,
+  edge.curved = (0.5),
   vertex.color = V(discuss_graph)$color,
   vertex.shape = V(discuss_graph)$shape
+
   )
 title(main = "Discussion Network")
+
 dev.off()
+
 ```
